@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CoolKAS - Cooling Kamera Astronomi</title>
+    <!-- Load Chart.js library -->
+    <script src="chart.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="bootstrap.min.css">
+    <script src="jquery.min.js"></script>
+    <script src="popper.min.js"></script>
+    <script src="bootstrap.min.js"></script>
+    <style>
+        body {
+            background-color: #1c1e26;
+            color: #fff;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 52px;
+            margin-top: 0;
+        }
+
+        h3 {
+            font-size: 20px;
+        }
+
+        p {
+            font-size: 24px;
+            text-align: center;
+            margin-top: 0;
+        }
+
+        #temperature,
+        #battery {
+            font-size: 20px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .control-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .center-item {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+<body>
+<div class="container">
+  <h1>CoolKAS</h1>
+  <p>Cooling Kamera Astronomi</p>
+  <div class="row">
+  <div class="col-lg-6 col-md-6 col-sm-12 mb-4">
+    <div class="card bg-dark text-white">
+      <div class="card-header">
+        <h3 class="card-title">Set Suhu</h3>
+      </div>
+      <div class="card-body">
+        <div class="input-group">
+          <input type="number" id="setpoint" min="-30" max="50" value="" step="0.1" class="form-control">
+          <div class="input-group-append">
+            <button class="btn btn-primary" onclick="setSetpoint()">Set</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6 col-md-6 col-sm-12 mb-4">
+    <div class="card bg-dark text-white">
+      <div class="card-header">
+        <h3 class="card-title">Rentang Waktu</h3>
+      </div>
+      <div class="card-body">
+        <select id="timeRange" class="form-control" onchange="updateTimeRange()">
+          <option value="1">1 Menit</option>
+          <option value="10" selected>10 Menit</option>
+          <option value="60">1 Jam</option>
+          <option value="all">Semua data</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+  <div class="row">
+    <div class="col-lg-4 col-md-6 col-sm-12 mb-4">
+      <div class="card bg-dark text-white">
+        <div class="card-header">
+          <h3 class="card-title">Suhu Sensor Kamera</h3>
+        </div>
+        <div class="card-body">
+          <h2 id="temperature"></h2>
+          <h5>&#8451;</h5>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4 col-md-6 col-sm-12 mb-4">
+      <div class="card bg-dark text-white">
+        <div class="card-header">
+          <h3 class="card-title">Sisa Baterai</h3>
+        </div>
+        <div class="card-body">
+          <h2 id="battery"></h2>
+          <h5>%</h5>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4 col-md-6 col-sm-12 mb-4">
+      <div class="card bg-dark text-white">
+        <div class="card-header">
+          <h3 class="card-title">Sky Quality Meter</h3>
+        </div>
+        <div class="card-body">
+          <h2 id="sqm"></h2>
+          <h5>magnitudes/arcsec<sup>2</sup></h5>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-lg-6 col-md-12 mb-4">
+      <div class="card bg-dark text-white">
+        <div class="card-header">
+          <h3 class="card-title">Suhu Sensor Kamera</h3>
+        </div>
+        <div class="card-body">
+<canvas id="temperature-chart"></canvas>
+</div>
+</div>
+</div>
+<div class="col-lg-6 col-md-12 mb-4">
+<div class="card bg-dark text-white">
+<div class="card-header">
+<h3 class="card-title">Daya Terpakai</h3>
+</div>
+<div class="card-body">
+<canvas id="power-chart"></canvas>
+</div>
+</div>
+</div>
+
+  </div>
+  <div class="row">
+    <div class="col-12">
+      <div class="card bg-dark text-white">
+        <div class="card-header">
+          <h3 class="card-title">SQM</h3>
+        </div>
+        <div class="card-body">
+          <canvas id="sqm-chart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+<!-- Script to update temperature value -->
+<script>
+    var temperatureElement = document.getElementById("temperature");
+    var ws = new WebSocket("ws://" + location.hostname + "/ws");
+    var timeRange = 10;
+
+    function updateTimeRange() {
+        var timeRangeElement = document.getElementById("timeRange");
+        timeRange = timeRangeElement.value;
+        limitDataPoints();
+    }
+
+    function limitDataPoints() {
+        if (timeRange !== "all") {
+            var maxDataPoints = timeRange * 60;
+            while (temperatureChart.data.labels.length > maxDataPoints) {
+                temperatureChart.data.labels.shift();
+                temperatureChart.data.datasets[0].data.shift();
+                temperatureChart.data.datasets[1].data.shift();
+            }
+            while (powerChart.data.labels.length > maxDataPoints) {
+                powerChart.data.labels.shift();
+powerChart.data.datasets[0].data.shift();
+}
+while (sqmChart.data.labels.length > maxDataPoints) {
+sqmChart.data.labels.shift();
+sqmChart.data.datasets[0].data.shift();
+}
+}
+}
+ws.onmessage = function(event) {
+    var data = JSON.parse(event.data);
+    var temperature = parseFloat(data.lm35Temperature).toFixed(1);
+    var setpoint = parseFloat(data.targetTemperature).toFixed(1);
+    var power = parseFloat(data.power_mW).toFixed(1);
+    temperatureElement.innerHTML = temperature;
+    var battery = parseFloat(data.batteryLevel).toFixed(1);
+    var batteryElement = document.getElementById("battery");
+    batteryElement.innerHTML = battery;
+    var sqm = parseFloat(data.sqm).toFixed(2);
+    var sqmElement = document.getElementById("sqm");
+    sqmElement.innerHTML = sqm;
+
+    // Update temperature chart
+    var timestamp = new Date().toLocaleTimeString();
+    temperatureChart.data.labels.push(timestamp);
+    temperatureChart.data.datasets[0].data.push(temperature);
+    temperatureChart.data.datasets[1].data.push(setpoint); // plot setpoint data
+    limitDataPoints();
+    temperatureChart.update();
+
+    // Update power chart
+    powerChart.data.labels.push(timestamp);
+    powerChart.data.datasets[0].data.push(power);
+    limitDataPoints();
+    powerChart.update();
+
+    // Update SQM chart
+    sqmChart.data.labels.push(timestamp);
+    sqmChart.data.datasets[0].data.push(sqm);
+    limitDataPoints();
+    sqmChart.update();
+};
+
+setInterval(function() {
+    ws.send('{"request": "update"}');
+}, 1000 * 1); // Request new data every minute
+
+function updateSetpoint(newSetpoint) {
+    // Update setpoint data with the new value
+    temperatureChart.data.datasets[1].data = temperatureChart.data.datasets[1].data.map(() => newSetpoint);
+    temperatureChart.update();
+}
+
+function setSetpoint() {
+    var setpointElement = document.getElementById("setpoint");
+    var setpoint = setpointElement.value;
+    var data = {
+        "type": "setpoint",
+        "targetTemperature": parseFloat(setpoint)
+    };
+    ws.send(JSON.stringify(data));
+}
+
+// Initialize temperature chart
+var temperatureChart = new Chart(document.getElementById("temperature-chart"), {
+    type: "line",
+    data: {
+        labels: [],
+        datasets: [{
+                label: "Suhu Sensor",
+                borderColor: "rgb(75, 192, 192)",
+                data: [],
+            },
+            {
+                label: "Set Suhu",
+                borderColor: "rgb(255, 205, 86)",
+                data: [],
+            },
+        ],
+    },
+    options: {
+        responsive: true,
+        scales: {
+            yAxes: [{
+                ticks: {
+                    beginAtZero: true,
+                    fontColor: '#fff',
+                },
+                gridLines: {
+                    display: true,
+                    color: "#333",
+                    zeroLineColor: "#ccc",
+                },
+                scaleLabel: {
+                    display: true,
+                    labelString: "Temperature (\u2103)",
+                    fontColor: '#fff',
+                },
+            }],
+            xAxes: [{
+                ticks: {
+                    fontColor: '#fff',
+                },
+                gridLines: {
+                    display: true,
+                    color: "#333",
+                    zeroLineColor: "#ccc",
+                },
+                scaleLabel: {
+                    display: true,
+                    labelString: "Time",
+                    fontColor: '#fff',
+                },
+            }],
+        },
+        legend: {
+            labels: {
+                fontColor: '#fff',
+            },
+               },
+    },
+});
+
+// Initialize power chart
+var powerChart = new Chart(document.getElementById("power-chart"), {
+    type: "line",
+    data: {
+        labels: [],
+        datasets: [{
+            label: "Power",
+            borderColor: "rgb(255, 99, 132)",
+            data: [],
+        }, ],
+    },
+    options: {
+        responsive: true,
+        scales: {
+            yAxes: [{
+                ticks: {
+                    beginAtZero: true,
+                    fontColor: '#fff',
+                },
+                gridLines: {
+                    display: true,
+                    color: "#333",
+                    zeroLineColor: "#ccc",
+                },
+                scaleLabel: {
+                    display: true,
+                    labelString: "Power (mW)",
+                    fontColor: '#fff',
+                },
+            }],
+            xAxes: [{
+                ticks: {
+                    fontColor: '#fff',
+                },
+                gridLines: {
+                    display: true,
+                    color: "#333",
+                    zeroLineColor: "#ccc",
+                },
+                scaleLabel: {
+                    display: true,
+                    labelString: "Time",
+                    fontColor: '#fff',
+                },
+            }],
+        },
+        legend: {
+            labels: {
+                fontColor: '#fff',
+            },
+        },
+    },
+});
+
+// Initialize SQM chart
+var sqmChart = new Chart(document.getElementById("sqm-chart"), {
+    type: "line",
+    data: {
+        labels: [],
+        datasets: [{
+            label: "SQM",
+            borderColor: "rgb(153, 102, 255)",
+            data: [],
+        }, ],
+    },
+    options: {
+        responsive: true,
+        scales: {
+            yAxes: [{
+                ticks: {
+                    beginAtZero: true,
+                    fontColor: '#fff',
+                },
+                gridLines: {
+                    display: true,
+                    color: "#333",
+                    zeroLineColor: "#ccc",
+                },
+                scaleLabel: {
+                    display: true,
+                    labelString: "SQM (mag/arcsec²)",
+                    fontColor: '#fff',
+                },
+            }],
+            xAxes: [{
+                ticks: {
+                    fontColor: '#fff',
+                },
+                gridLines: {
+                    display: true,
+                    color: "#333",
+                    zeroLineColor: "#ccc",
+                },
+                scaleLabel: {
+                    display: true,
+                    labelString: "Time",
+                    fontColor: '#fff',
+                },
+            }],
+        },
+        legend: {
+            labels: {
+                fontColor: '#fff',
+            },
+        },
+    },
+});
+</script>
+</body>
+</html>
+
+
